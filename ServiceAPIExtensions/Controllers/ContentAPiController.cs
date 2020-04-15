@@ -27,7 +27,6 @@ namespace ServiceAPIExtensions.Controllers
     {
         IContentRepository _repo = ServiceLocator.Current.GetInstance<IContentRepository>();
         IContentTypeRepository _typerepo = ServiceLocator.Current.GetInstance<IContentTypeRepository>();
-        IRawContentRetriever _rc = ServiceLocator.Current.GetInstance<IRawContentRetriever>();
         IBlobFactory _blobfactory = ServiceLocator.Current.GetInstance<IBlobFactory>();
         EPiServer.Validation.IValidationService _validationService = ServiceLocator.Current.GetInstance<EPiServer.Validation.IValidationService>();
 
@@ -111,6 +110,7 @@ namespace ServiceAPIExtensions.Controllers
             result["__EpiserverAvailableLanguages"] = GetLanguages(content);
             result["__EpiserverMasterLanguage"] = GetLanguage(DataFactory.Instance.Get<IContent>(content.ContentLink));
             result["__EpiserverCurrentLanguage"] = GetLanguage(content);
+            result["__EpiserverSavedAt"] = GetSavedAt(content);
 
             var binaryContent = content as IBinaryStorable;
 
@@ -976,6 +976,12 @@ namespace ServiceAPIExtensions.Controllers
             
             // Files and media do not have languages
             return "";
+        }
+        
+        private static DateTime GetSavedAt(IContent content)
+        {
+            var changeTrackable = content as IChangeTrackable;
+            return changeTrackable != null ? changeTrackable.Saved : DateTime.MinValue;
         }
 
         IHttpActionResult BadRequestErrorCode(string errorCode)
