@@ -1,6 +1,5 @@
-﻿using EPiServer;
+using EPiServer;
 using EPiServer.Core;
-using EPiServer.Core.Transfer;
 using EPiServer.DataAbstraction;
 using EPiServer.ServiceLocation;
 using System;
@@ -27,6 +26,7 @@ namespace ServiceAPIExtensions.Controllers
     {
         IContentRepository _repo = ServiceLocator.Current.GetInstance<IContentRepository>();
         IContentTypeRepository _typerepo = ServiceLocator.Current.GetInstance<IContentTypeRepository>();
+        ProjectRepository _projectrepo = ServiceLocator.Current.GetInstance<ProjectRepository>();
         IBlobFactory _blobfactory = ServiceLocator.Current.GetInstance<IBlobFactory>();
         EPiServer.Validation.IValidationService _validationService = ServiceLocator.Current.GetInstance<EPiServer.Validation.IValidationService>();
 
@@ -64,8 +64,8 @@ namespace ServiceAPIExtensions.Controllers
                 "__EpiserverMasterLanguage",
                 "PageLanguageBranch",
                 "PageMasterLanguageBranch",
-                "SiteLogotype"
-
+                "SiteLogotype",
+                "CategoryFilter"
             });
 
         /// <summary>
@@ -139,7 +139,22 @@ namespace ServiceAPIExtensions.Controllers
                 }
             }
 
-            foreach(var property in MapProperties(content.Property, recurseContentLevelsRemaining, typerepo))
+            var categorizableContent = content as ICategorizable;
+
+            if (categorizableContent != null)
+            {
+                CategoryRepository catrepo = ServiceLocator.Current.GetInstance<CategoryRepository>();
+                List<string> CategoryList = new List<string>();
+                foreach (var category in categorizableContent.Category)
+                {
+                    var name = catrepo.Get(category).Name;
+                    CategoryList.Add(name);
+                }
+                string joined = string.Join(", ", CategoryList);
+                result.Add("Category", joined);
+            }
+
+            foreach (var property in MapProperties(content.Property, recurseContentLevelsRemaining, typerepo))
             {
                 result.Add(property.Key, property.Value);
             }
@@ -152,15 +167,15 @@ namespace ServiceAPIExtensions.Controllers
             var result = new Dictionary<string, object>();
             foreach (var pi in properties.Where(p => p.Value != null))
             {
-                if (pi.Type == PropertyDataType.Block)
-                {
-                    var contentData = pi.Value as IContentData;
-                    if (contentData!=null)
-                    {
-                        result.Add(pi.Name, MapProperties(contentData.Property, recurseContentLevelsRemaining-1, typerepo));
-                    }
-                }
-                else if (pi is EPiServer.SpecializedProperties.PropertyContentArea)
+                //if (pi.Type == PropertyDataType.Block)
+                //{
+                //   var contentData = pi.Value as IContentData;
+                //   if (contentData!=null)
+                //    {
+                //        result.Add(pi.Name, MapProperties(contentData.Property, recurseContentLevelsRemaining-1, typerepo));
+                //    }
+                //}
+                if (pi is EPiServer.SpecializedProperties.PropertyContentArea)
                 {
                     if(recurseContentLevelsRemaining<=0)
                     {
@@ -265,6 +280,16 @@ namespace ServiceAPIExtensions.Controllers
                 saveaction = EPiServer.DataAccess.SaveAction.Publish;
                 newProperties.Remove("SaveAction");
             }
+            if (newProperties.ContainsKey("SaveAction") && ((string)newProperties["SaveAction"]) == "RequestApproval")
+            {
+                saveaction = EPiServer.DataAccess.SaveAction.RequestApproval;
+                newProperties.Remove("SaveAction");
+            }
+            if (newProperties.ContainsKey("SaveAction") && ((string)newProperties["SaveAction"]) == "CheckIn")
+            {
+                saveaction = EPiServer.DataAccess.SaveAction.CheckIn;
+                newProperties.Remove("SaveAction");
+            }
 
             IContent moveTo = null;
 
@@ -350,10 +375,14 @@ namespace ServiceAPIExtensions.Controllers
             try
             {
                 var updatedReference = _repo.Save(content, saveaction);
-                
+                if (TryGetProject(out int projectId, out Project project))
+                {
+                    ProjectItem projectItem = new ProjectItem(projectId, content);
+                    _projectrepo.SaveItems(new ProjectItem[] { projectItem });
+                }
                 return Ok(new { reference = updatedReference.ToString() });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 if(moveTo!=null)
                 {
@@ -426,6 +455,16 @@ namespace ServiceAPIExtensions.Controllers
                 saveaction = EPiServer.DataAccess.SaveAction.Publish;
                 contentProperties.Remove("SaveAction");
             }
+            if (contentProperties.ContainsKey("SaveAction") && (string)contentProperties["SaveAction"] == "RequestApproval")
+            {
+                saveaction = EPiServer.DataAccess.SaveAction.RequestApproval;
+                contentProperties.Remove("SaveAction");
+            }
+            if (contentProperties.ContainsKey("SaveAction") && ((string)contentProperties["SaveAction"]) == "CheckIn")
+            {
+                saveaction = EPiServer.DataAccess.SaveAction.CheckIn;
+                contentProperties.Remove("SaveAction");
+            }
 
             // Create content.
             IContent content;
@@ -488,13 +527,18 @@ namespace ServiceAPIExtensions.Controllers
             try
             {
                 var createdReference = _repo.Save(content, saveaction);
+                if (TryGetProject(out int projectId, out Project project))
+                {
+                    ProjectItem projectItem = new ProjectItem(projectId, content);
+                    _projectrepo.SaveItems(new ProjectItem[] { projectItem });
+                }
                 return Created(path, new { reference = createdReference.ID , __EpiserverCurrentLanguage = cultureInfo});
             }
             catch(AccessDeniedException)
             {
                 return StatusCode(HttpStatusCode.Forbidden);
             }
-            catch(EPiServerException e)
+            catch(EPiServerException)
             {
                 return BadRequestValidationErrors(ValidationError.TypeCannotBeUsed("ContentType", contentType.Name, _repo.Get<IContent>(parentContentRef).GetOriginalType().Name));
             }
@@ -548,7 +592,7 @@ namespace ServiceAPIExtensions.Controllers
                 _repo.MoveToWastebasket(contentReference);
                 return Ok();
             }
-            catch(ContentNotFoundException e)
+            catch(ContentNotFoundException)
             {
                 return NotFound();
             }
@@ -666,6 +710,62 @@ namespace ServiceAPIExtensions.Controllers
             return Ok(children.ToArray());
         }
 
+        [AuthorizePermission("EPiServerServiceApi", "ReadAccess"), HttpGet, Route("projects")]
+        public virtual IHttpActionResult GetProjects()
+        {
+            if (TryGetProject(out int projectId, out Project project))
+            {
+                return Ok(project);
+            }
+            var projects = _projectrepo.List();
+            return Ok(projects);
+        }
+
+        [AuthorizePermission("EPiServerServiceApi", "WriteAccess"), HttpPut, Route("projects")]
+        public virtual IHttpActionResult UpdateProject([FromBody] Dictionary<string, object> newProperties)
+        {
+            if (!newProperties.ContainsKey("Name"))
+            {
+                return BadRequestErrorCode("NO_NAME");
+            }
+            if (TryGetProject(out int projectId, out Project project))
+            {
+                Project updatedProject = project.CreateWritableClone();
+                updatedProject.Name = (string)newProperties["Name"];
+                _projectrepo.Save(updatedProject);
+            }
+            return Ok(project);
+        }
+
+        [AuthorizePermission("EPiServerServiceApi", "ReadAccess"), HttpGet, Route("projects/{*projectId}")]
+        public virtual IHttpActionResult GetProjects(int projectId)
+        {
+            var projectItems = _projectrepo.ListItems(projectId);
+            List<Dictionary<string, object>> contentList = new List<Dictionary<string, object>>();
+            foreach (var projectItem in projectItems)
+            {
+                var contentReference = projectItem.ContentLink;
+                if (!_repo.TryGet(contentReference, out IContent content))
+                {
+                    continue;
+                }
+
+                if (content.IsDeleted)
+                {
+                    continue;
+                }
+
+                if (!HasAccess(content, EPiServer.Security.AccessLevel.Read))
+                {
+                    continue;
+                }
+
+                var contentMap = MapContent(content, recurseContentLevelsRemaining: 1, typerepo: _typerepo.List().ToDictionary(x => x.ID));
+                contentList.Add(contentMap);
+            }
+            return Ok(contentList);
+        }
+
         [AuthorizePermission("EPiServerServiceApi", "ReadAccess"), HttpGet, Route("entity/{*path}")]
         public virtual IHttpActionResult GetEntity(string path)
         {
@@ -776,7 +876,7 @@ namespace ServiceAPIExtensions.Controllers
                             {
                                 TypeName = content.GetOriginalType().Name,
                                 BaseType = GetBaseContentType(content),
-                                Properties = content.Property.Select(p => new { Name = p.Name, Type = p.Type.ToString() })
+                                Properties = content.Property.Select(p => new { Name = p.Name, Type = p.GetType().ToString() })
                             },
                             new JsonSerializerSettings(),
                             Encoding.UTF8,
@@ -815,7 +915,7 @@ namespace ServiceAPIExtensions.Controllers
                         result.Add(ValidationError.FieldNotKnown(propertyName)); 
                     }
                 }
-                catch (InvalidCastException e)
+                catch (InvalidCastException)
                 {
                     result.Add(ValidationError.InvalidType(propertyName));
                 }
@@ -866,7 +966,14 @@ namespace ServiceAPIExtensions.Controllers
                 }
                 else if (!NonUpdatingProperties.Contains(propertyName))
                 {
-                    con.Property[propertyName].Value = value;
+                    try
+                    {
+                        con.Property[propertyName].Value = value;
+                    }
+                    catch (Exception)
+                    {
+                        con.Property[propertyName].ParseToSelf((string)value);
+                    }
                 }
                 return null;
             }
@@ -894,7 +1001,23 @@ namespace ServiceAPIExtensions.Controllers
 
             return sBuilder.ToString();
         }
-        
+
+        private bool TryGetProject(out int projectId, out Project project)
+        {
+            var query = Request.GetQueryNameValuePairs().Where(kv => kv.Key == "project_id").FirstOrDefault();
+
+            projectId = 0;
+
+            if (Int32.TryParse(query.Value, out projectId))
+            {
+                project = _projectrepo.Get(projectId);
+                return (project != null);
+            }
+
+            project = null;
+            return false;
+        }
+
         private bool TryGetCultureInfo(out string language, out CultureInfo cultureInfo)
         {
             var query = Request.GetQueryNameValuePairs().Where(kv => kv.Key == "language").FirstOrDefault();
@@ -977,7 +1100,7 @@ namespace ServiceAPIExtensions.Controllers
             // Files and media do not have languages
             return "";
         }
-        
+
         private static DateTime GetSavedAt(IContent content)
         {
             var changeTrackable = content as IChangeTrackable;
