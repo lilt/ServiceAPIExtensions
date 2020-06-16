@@ -139,21 +139,6 @@ namespace ServiceAPIExtensions.Controllers
                 }
             }
 
-            var categorizableContent = content as ICategorizable;
-
-            if (categorizableContent != null)
-            {
-                CategoryRepository catrepo = ServiceLocator.Current.GetInstance<CategoryRepository>();
-                List<string> CategoryList = new List<string>();
-                foreach (var category in categorizableContent.Category)
-                {
-                    var name = catrepo.Get(category).Name;
-                    CategoryList.Add(name);
-                }
-                string joined = string.Join(", ", CategoryList);
-                result.Add("Category", joined);
-            }
-
             foreach (var property in MapProperties(content.Property, recurseContentLevelsRemaining, typerepo))
             {
                 result.Add(property.Key, property.Value);
@@ -167,14 +152,6 @@ namespace ServiceAPIExtensions.Controllers
             var result = new Dictionary<string, object>();
             foreach (var pi in properties.Where(p => p.Value != null))
             {
-                //if (pi.Type == PropertyDataType.Block)
-                //{
-                //   var contentData = pi.Value as IContentData;
-                //   if (contentData!=null)
-                //    {
-                //        result.Add(pi.Name, MapProperties(contentData.Property, recurseContentLevelsRemaining-1, typerepo));
-                //    }
-                //}
                 if (pi is EPiServer.SpecializedProperties.PropertyContentArea)
                 {
                     if(recurseContentLevelsRemaining<=0)
