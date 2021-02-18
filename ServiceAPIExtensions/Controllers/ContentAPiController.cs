@@ -164,6 +164,23 @@ namespace ServiceAPIExtensions.Controllers
 
                     result.Add(pi.Name, contentArea.Items.Select(i => i.GetContent()?.ContentLink?.ID).ToList());
                 }
+                else if (pi is EPiServer.SpecializedProperties.PropertyBlock)
+                {
+                    var propertyBlock = pi as EPiServer.SpecializedProperties.PropertyBlock;
+                    BlockData blockData = propertyBlock.Value as BlockData;
+                    var currentBlock = propertyBlock.Value;
+                    var blockProperties = new Dictionary<string, object>();
+                    foreach(var bp in currentBlock.GetType().GetProperties())
+                    {
+                        if (bp.Name == "Property" || bp.Name == "IsReadOnly" || bp.Name == "Item")
+                        {
+                            continue;
+                        }
+                        var val = blockData.GetValue(bp.Name);
+                        blockProperties.Add(bp.Name, val);
+                    }
+                    result.Add(pi.Name, blockProperties);
+                }
                 else if (pi.Value is Int32 || pi.Value is Boolean || pi.Value is DateTime || pi.Value is Double || pi.Value is string[] || pi.Value is string)
                 {
                     result.Add(pi.Name, pi.Value);
@@ -927,6 +944,15 @@ namespace ServiceAPIExtensions.Controllers
                             var itmref = FindContentReference(s.ToString());
                             ca.Items.Add(new ContentAreaItem() { ContentLink = itmref });
                         }
+                    }
+                }
+                else if (con.Property[propertyName] is EPiServer.SpecializedProperties.PropertyBlock)
+                {
+                    var propertyBlock = con.Property[propertyName].Value as BlockData;
+                    var props = value as Newtonsoft.Json.Linq.JObject;
+                    foreach(var p in props)
+                    {
+                        propertyBlock.SetValue(p.Key, p.Value);
                     }
                 }
                 else if (value is string[])
