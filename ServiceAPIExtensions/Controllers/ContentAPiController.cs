@@ -75,7 +75,7 @@ namespace ServiceAPIExtensions.Controllers
         /// <returns>The requested content on success or ContentReference.EmptyReference otherwise</returns>
         ContentReference FindContentReference(string reference)
         {
-            if(constantContentReferenceMap.ContainsKey(reference.ToLower()))
+            if (constantContentReferenceMap.ContainsKey(reference.ToLower()))
             {
                 return constantContentReferenceMap[reference.ToLower()];
             }
@@ -105,7 +105,7 @@ namespace ServiceAPIExtensions.Controllers
             result["ContentGuid"] = content.ContentGuid;
             result["ContentLink"] = content.ContentLink;
             result["ContentTypeID"] = content.ContentTypeID;
-            result["__EpiserverContentType"] = GetContentType(content, typerepo );
+            result["__EpiserverContentType"] = GetContentType(content, typerepo);
             result["__EpiserverBaseContentType"] = GetBaseContentType(content);
             result["__EpiserverAvailableLanguages"] = GetLanguages(content);
             result["__EpiserverMasterLanguage"] = GetLanguage(DataFactory.Instance.Get<IContent>(content.ContentLink));
@@ -143,7 +143,7 @@ namespace ServiceAPIExtensions.Controllers
             {
                 result.Add(property.Key, property.Value);
             }
-            
+
             return result;
         }
 
@@ -154,7 +154,7 @@ namespace ServiceAPIExtensions.Controllers
             {
                 if (pi is EPiServer.SpecializedProperties.PropertyContentArea)
                 {
-                    if(recurseContentLevelsRemaining<=0)
+                    if (recurseContentLevelsRemaining <= 0)
                     {
                         continue;
                     }
@@ -189,17 +189,17 @@ namespace ServiceAPIExtensions.Controllers
 
         private static string GetBaseContentType(IContent c)
         {
-            if(c is MediaData)
+            if (c is MediaData)
             {
                 return "File";
             }
 
-            if(c is ContentFolder)
+            if (c is ContentFolder)
             {
                 return "Folder";
             }
 
-            if(c is PageData)
+            if (c is PageData)
             {
                 return "Page";
             }
@@ -215,7 +215,7 @@ namespace ServiceAPIExtensions.Controllers
         const string MoveEntityToPropertyKey = "__EpiserverMoveEntityTo";
 
         [AuthorizePermission("EPiServerServiceApi", "WriteAccess"), HttpPut, Route("entity/{*path}")]
-        public virtual IHttpActionResult UpdateContent(string path, [FromBody] Dictionary<string,object> newProperties, EPiServer.DataAccess.SaveAction action = EPiServer.DataAccess.SaveAction.Save)
+        public virtual IHttpActionResult UpdateContent(string path, [FromBody] Dictionary<string, object> newProperties, EPiServer.DataAccess.SaveAction action = EPiServer.DataAccess.SaveAction.Save)
         {
             path = path ?? "";
             var contentRef = FindContentReference(path);
@@ -232,7 +232,7 @@ namespace ServiceAPIExtensions.Controllers
                 return NotFound();
             }
 
-            if (newProperties==null)
+            if (newProperties == null)
             {
                 return BadRequestErrorCode("BODY_EMPTY");
             }
@@ -250,7 +250,7 @@ namespace ServiceAPIExtensions.Controllers
             }
 
             var content = (originalContent as IReadOnly).CreateWritableClone() as IContent;
-            
+
             EPiServer.DataAccess.SaveAction saveaction = action;
             if (newProperties.ContainsKey("SaveAction") && ((string)newProperties["SaveAction"]) == "Publish")
             {
@@ -270,9 +270,9 @@ namespace ServiceAPIExtensions.Controllers
 
             IContent moveTo = null;
 
-            if(newProperties.ContainsKey(MoveEntityToPropertyKey))
+            if (newProperties.ContainsKey(MoveEntityToPropertyKey))
             {
-                if(!(newProperties[MoveEntityToPropertyKey] is string))
+                if (!(newProperties[MoveEntityToPropertyKey] is string))
                 {
                     return BadRequestValidationErrors(ValidationError.InvalidType(MoveEntityToPropertyKey, typeof(string)));
                 }
@@ -283,23 +283,23 @@ namespace ServiceAPIExtensions.Controllers
                     return BadRequestValidationErrors(ValidationError.CustomError(MoveEntityToPropertyKey, "FIELD_INVALID_FORMAT", $"{MoveEntityToPropertyKey} should start with a /"));
                 }
 
-                if(!_repo.TryGet(FindContentReference(moveToPath.Substring(1)), out moveTo))
+                if (!_repo.TryGet(FindContentReference(moveToPath.Substring(1)), out moveTo))
                 {
                     return BadRequestValidationErrors(ValidationError.CustomError(MoveEntityToPropertyKey, "TARGET_CONTAINER_NOT_FOUND", "The target container was not found"));
                 }
-                
+
                 newProperties.Remove(MoveEntityToPropertyKey);
             }
 
-            if(newProperties.ContainsKey("Name"))
+            if (newProperties.ContainsKey("Name"))
             {
                 content.Name = newProperties["Name"].ToString();
                 newProperties.Remove("Name");
             }
-            
+
             // Store the new information in the object.
             var errors = UpdateContentProperties(newProperties, content);
-            if(errors.Any())
+            if (errors.Any())
             {
                 return BadRequestValidationErrors(errors.ToArray());
             }
@@ -311,14 +311,14 @@ namespace ServiceAPIExtensions.Controllers
                 return BadRequestValidationErrors(validationErrors.Select(ValidationError.FromEpiserver).ToArray());
             }
 
-            if(!HasAccess(content,EPiServer.Security.AccessLevel.Edit | EPiServer.Security.AccessLevel.Publish))
+            if (!HasAccess(content, EPiServer.Security.AccessLevel.Edit | EPiServer.Security.AccessLevel.Publish))
             {
                 return StatusCode(HttpStatusCode.Forbidden);
             }
-            
-            if(moveTo!=null)
+
+            if (moveTo != null)
             {
-                if(!HasAccess(content, EPiServer.Security.AccessLevel.Read | EPiServer.Security.AccessLevel.Delete))
+                if (!HasAccess(content, EPiServer.Security.AccessLevel.Read | EPiServer.Security.AccessLevel.Delete))
                 {
                     return StatusCode(HttpStatusCode.Forbidden);
                 }
@@ -361,7 +361,7 @@ namespace ServiceAPIExtensions.Controllers
             }
             catch (Exception)
             {
-                if(moveTo!=null)
+                if (moveTo != null)
                 {
                     //try to undo the move. We've tried using TransactionScope for this, but it doesn't play well with Episerver (caching, among other problems)
                     _repo.Move(contentRef, originalContent.ParentLink);
@@ -371,12 +371,12 @@ namespace ServiceAPIExtensions.Controllers
         }
 
         [AuthorizePermission("EPiServerServiceApi", "WriteAccess"), HttpPost, Route("entity/{*path}")]
-        public virtual IHttpActionResult CreateContent(string path, [FromBody] Dictionary<string,object> contentProperties, EPiServer.DataAccess.SaveAction action = EPiServer.DataAccess.SaveAction.Save)
+        public virtual IHttpActionResult CreateContent(string path, [FromBody] Dictionary<string, object> contentProperties, EPiServer.DataAccess.SaveAction action = EPiServer.DataAccess.SaveAction.Save)
         {
             path = path ?? "";
             var parentContentRef = FindContentReference(path);
             if (parentContentRef == ContentReference.EmptyReference) return NotFound();
-            if(!ReferenceExists(parentContentRef))
+            if (!ReferenceExists(parentContentRef))
             {
                 return NotFound();
             }
@@ -393,7 +393,7 @@ namespace ServiceAPIExtensions.Controllers
                     contentProperties.Remove(property);
             }
             object contentTypeString;
-            if (!(contentProperties.TryGetValue("ContentType", out contentTypeString)|| contentProperties.TryGetValue("__EpiserverContentType", out contentTypeString)))
+            if (!(contentProperties.TryGetValue("ContentType", out contentTypeString) || contentProperties.TryGetValue("__EpiserverContentType", out contentTypeString)))
             {
                 return BadRequestValidationErrors(ValidationError.Required("ContentType"));
             }
@@ -415,17 +415,18 @@ namespace ServiceAPIExtensions.Controllers
             {
                 return BadRequestValidationErrors(ValidationError.CustomError("ContentType", "CONTENT_TYPE_INVALID", $"Could not find contentType {contentTypeString}"));
             }
-            
+
             if (!contentProperties.TryGetValue("Name", out object nameValue))
             {
                 return BadRequestValidationErrors(ValidationError.Required("Name"));
             }
             contentProperties.Remove("Name");
 
-            if(!(nameValue is string)) {
+            if (!(nameValue is string))
+            {
                 return BadRequestValidationErrors(ValidationError.InvalidType("Name", typeof(string)));
             }
-            
+
             EPiServer.DataAccess.SaveAction saveaction = action;
             if (contentProperties.ContainsKey("SaveAction") && (string)contentProperties["SaveAction"] == "Publish")
             {
@@ -454,8 +455,8 @@ namespace ServiceAPIExtensions.Controllers
                 {
                     return BadRequestValidationErrors(ValidationError.InvalidType("__EpiserverCurrentLanguage", typeof(string)));
                 }
-                
-                if(!TryGetCultureInfo((string)languageValue, out cultureInfo))
+
+                if (!TryGetCultureInfo((string)languageValue, out cultureInfo))
                 {
                     if (cultureInfo == null || !GetLanguages().Any(ci => ci.TwoLetterISOLanguageName == cultureInfo.TwoLetterISOLanguageName))
                     {
@@ -470,14 +471,15 @@ namespace ServiceAPIExtensions.Controllers
                 }
                 cultureInfo = new CultureInfo(cultureInfo.TwoLetterISOLanguageName);
 
-                
+
                 if (_repo.TryGet<IContent>(parentContentRef, cultureInfo, out IContent parent))
                 {
                     return BadRequestLanguageBranchExists(parent, cultureInfo.TwoLetterISOLanguageName);
                 }
 
                 content = _repo.CreateLanguageBranch<IContent>(parentContentRef, cultureInfo);
-            } else
+            }
+            else
             {
                 content = _repo.GetDefault<IContent>(parentContentRef, contentType.ID);
             }
@@ -492,10 +494,10 @@ namespace ServiceAPIExtensions.Controllers
             {
                 return BadRequestValidationErrors(errors.ToArray());
             }
-            
+
             var validationErrors = _validationService.Validate(content);
 
-            if(validationErrors.Any())
+            if (validationErrors.Any())
             {
                 return BadRequestValidationErrors(validationErrors.Select(ValidationError.FromEpiserver).ToArray());
             }
@@ -509,13 +511,13 @@ namespace ServiceAPIExtensions.Controllers
                     ProjectItem projectItem = new ProjectItem(projectId, content);
                     _projectrepo.SaveItems(new ProjectItem[] { projectItem });
                 }
-                return Created(path, new { reference = createdReference.ID , __EpiserverCurrentLanguage = cultureInfo});
+                return Created(path, new { reference = createdReference.ID, __EpiserverCurrentLanguage = cultureInfo });
             }
-            catch(AccessDeniedException)
+            catch (AccessDeniedException)
             {
                 return StatusCode(HttpStatusCode.Forbidden);
             }
-            catch(EPiServerException)
+            catch (EPiServerException)
             {
                 return BadRequestValidationErrors(ValidationError.TypeCannotBeUsed("ContentType", contentType.Name, _repo.Get<IContent>(parentContentRef).GetOriginalType().Name));
             }
@@ -558,7 +560,8 @@ namespace ServiceAPIExtensions.Controllers
                 {
                     _repo.DeleteLanguageBranch(contentReference, cultureInfo.TwoLetterISOLanguageName, EPiServer.Security.AccessLevel.Delete);
                     return Ok();
-                } catch (AccessDeniedException)
+                }
+                catch (AccessDeniedException)
                 {
                     return StatusCode(HttpStatusCode.Forbidden);
                 }
@@ -569,11 +572,11 @@ namespace ServiceAPIExtensions.Controllers
                 _repo.MoveToWastebasket(contentReference);
                 return Ok();
             }
-            catch(ContentNotFoundException)
+            catch (ContentNotFoundException)
             {
                 return NotFound();
             }
-            catch(AccessDeniedException)
+            catch (AccessDeniedException)
             {
                 return StatusCode(HttpStatusCode.Forbidden);
             }
@@ -650,13 +653,13 @@ namespace ServiceAPIExtensions.Controllers
             {
                 return BadRequestInvalidLanguage(language);
             }
-            
+
             if (!_repo.TryGet(contentReference, cultureInfo, out IContent parentContent))
             {
                 return NotFound();
             }
 
-            if (!HasAccess(parentContent,EPiServer.Security.AccessLevel.Read))
+            if (!HasAccess(parentContent, EPiServer.Security.AccessLevel.Read))
             {
                 return StatusCode(HttpStatusCode.Forbidden);
             }
@@ -668,8 +671,8 @@ namespace ServiceAPIExtensions.Controllers
             children.AddRange(
                 _repo
                 .GetChildren<IContent>(contentReference, cultureInfo)
-                .Where(c=>HasAccess(c, EPiServer.Security.AccessLevel.Read))
-                .Where(c=>!c.IsDeleted)
+                .Where(c => HasAccess(c, EPiServer.Security.AccessLevel.Read))
+                .Where(c => !c.IsDeleted)
                 .Select(x => MapContent(x, recurseContentLevelsRemaining: GetChildrenRecurseContentLevel, typerepo: typerepo)));
 
             if (parentContent is PageData)
@@ -677,11 +680,11 @@ namespace ServiceAPIExtensions.Controllers
                 children.AddRange(
                     parentContent.Property
                     .Where(p => p.Value != null && p.Value is ContentArea)
-                    .Select(p=>p.Value as ContentArea)
+                    .Select(p => p.Value as ContentArea)
                     .SelectMany(ca => ca.Items
                         .Select(item => _repo.Get<IContent>(item.ContentLink))
-                        .Where(item=>HasAccess(item,EPiServer.Security.AccessLevel.Read))
-                        .Select(item=> MapContent(item, recurseContentLevelsRemaining: GetChildrenRecurseContentLevel, typerepo: typerepo))));
+                        .Where(item => HasAccess(item, EPiServer.Security.AccessLevel.Read))
+                        .Select(item => MapContent(item, recurseContentLevelsRemaining: GetChildrenRecurseContentLevel, typerepo: typerepo))));
             }
 
             return Ok(children.ToArray());
@@ -749,12 +752,12 @@ namespace ServiceAPIExtensions.Controllers
             path = path ?? "";
             var contentReference = FindContentReference(path);
             if (contentReference == ContentReference.EmptyReference) return NotFound();
-            
+
             if (!TryGetCultureInfo(out string language, out CultureInfo cultureInfo))
             {
                 return BadRequestInvalidLanguage(language);
             }
-            
+
             IContent content;
             if (cultureInfo != null)
             {
@@ -776,11 +779,11 @@ namespace ServiceAPIExtensions.Controllers
                 return NotFound();
             }
 
-            if(!HasAccess(content, EPiServer.Security.AccessLevel.Read))
+            if (!HasAccess(content, EPiServer.Security.AccessLevel.Read))
             {
                 return StatusCode(HttpStatusCode.Forbidden);
             }
-            
+
             return Ok(MapContent(content, recurseContentLevelsRemaining: 1, typerepo: _typerepo.List().ToDictionary(x => x.ID)));
         }
 
@@ -789,7 +792,7 @@ namespace ServiceAPIExtensions.Controllers
         {
             var episerverType = _typerepo.Load(type);
 
-            if(episerverType==null)
+            if (episerverType == null)
             {
                 var contentReference = FindContentReference(type);
                 if (contentReference == ContentReference.EmptyReference) return NotFound();
@@ -864,7 +867,7 @@ namespace ServiceAPIExtensions.Controllers
         {
             var extension = Path.GetExtension(name);
 
-            if(string.IsNullOrWhiteSpace(extension))
+            if (string.IsNullOrWhiteSpace(extension))
             {
                 extension = ".bin";
             }
@@ -889,15 +892,15 @@ namespace ServiceAPIExtensions.Controllers
                     var errorMessage = UpdateFieldOnContent(content, content.Name ?? (string)newProperties["Name"], propertyName, newProperties[propertyName]);
                     if (!string.IsNullOrEmpty(errorMessage))
                     {
-                        result.Add(ValidationError.FieldNotKnown(propertyName)); 
+                        result.Add(ValidationError.FieldNotKnown(propertyName));
                     }
                 }
                 catch (InvalidCastException)
                 {
                     result.Add(ValidationError.InvalidType(propertyName));
                 }
-                
-                catch(FormatException)
+
+                catch (FormatException)
                 {
                     result.Add(ValidationError.InvalidType(propertyName));
                 }
@@ -964,7 +967,7 @@ namespace ServiceAPIExtensions.Controllers
 
             return propertyName;
         }
-                
+
         private static string Hash(Stream stream, HashAlgorithm hashing)
         {
             StringBuilder sBuilder = new StringBuilder();
@@ -1024,7 +1027,7 @@ namespace ServiceAPIExtensions.Controllers
             {
                 cultureInfo = CultureInfo.GetCultureInfo(language);
             }
-            catch(Exception)
+            catch (Exception)
             {
 
             }
@@ -1073,7 +1076,7 @@ namespace ServiceAPIExtensions.Controllers
                         return ci.TwoLetterISOLanguageName;
                 }
             }
-            
+
             // Files and media do not have languages
             return "";
         }
@@ -1179,12 +1182,12 @@ namespace ServiceAPIExtensions.Controllers
 
             public static ValidationError FieldNotKnown(string fieldName)
             {
-                return new ValidationError { name = fieldName, errorCode = "FIELD_NOT_KNOWN", errorMsg = $"Field '{fieldName}' is not known"};
+                return new ValidationError { name = fieldName, errorCode = "FIELD_NOT_KNOWN", errorMsg = $"Field '{fieldName}' is not known" };
             }
 
             public static ValidationError FromEpiserver(EPiServer.Validation.ValidationError epiValidation)
             {
-                if(epiValidation.Source is EPiServer.Validation.Internal.RequiredPropertyValidator)
+                if (epiValidation.Source is EPiServer.Validation.Internal.RequiredPropertyValidator)
                 {
                     return Required(epiValidation.PropertyName);
                 }
